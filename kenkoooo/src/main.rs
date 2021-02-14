@@ -1,5 +1,7 @@
+use rand::distributions::Uniform;
+use rand::{thread_rng, Rng};
 use std::collections::BTreeMap;
-use std::io::BufRead;
+use std::time::Instant;
 
 fn main() {
     let (r, w) = (std::io::stdin(), std::io::stdout());
@@ -21,7 +23,8 @@ fn main() {
                 map
             });
 
-    let mut regions = BTreeMap::new();
+    let mut regions = vec![];
+    let mut region_id_map = BTreeMap::new();
     for provider_id in 0..provider_num {
         let _provider_name: String = sc.read();
         let region_num: usize = sc.read();
@@ -31,16 +34,14 @@ fn main() {
             let cost: f64 = sc.read();
             let units: Vec<i64> = sc.vec(service_num);
             let latencies: Vec<i64> = sc.vec(country_num);
-            regions.insert(
-                (provider_id, region_id),
-                Region {
-                    id: (provider_id, region_id),
-                    available,
-                    cost,
-                    units,
-                    latencies,
-                },
-            );
+            regions.push(Region {
+                id: (provider_id, region_id),
+                available,
+                cost,
+                units,
+                latencies,
+            });
+            region_id_map.insert((provider_id, region_id), regions.len() - 1);
         }
     }
 
@@ -56,69 +57,177 @@ fn main() {
             units,
         });
     }
+
+    let project_states = solve(&projects, &regions);
+    for project_id in 0..project_num {
+        for (i, (&region_id, &count)) in project_states[project_id].bought_count.iter().enumerate()
+        {
+            if i > 0 {
+                print!(" ");
+            }
+            let (pid, rid) = regions[region_id].id;
+            print!("{} {} {}", pid, rid, count);
+        }
+        println!();
+    }
 }
 
-fn calc_score(
-    project: &Project,
-    ans: &[((usize, usize), i64)],
-    regions: &BTreeMap<(usize, usize), Region>,
-) -> f64 {
-    let service_num = project.units.len();
-
-    let mut cost_sum = 0.0;
-    let mut services = vec![];
-    let mut latency_sum = 0;
-    let mut unit_sum = 0;
-
-    for &(id, count) in ans.iter() {
-        let region = &regions[&id];
-        let latency = region.latencies[project.country];
-        let bought_services = region.units.iter().map(|&t| t * count).collect::<Vec<_>>();
-        let cost = region.cost * count as f64;
-        cost_sum += cost;
-
-        let units = bought_services.iter().sum::<i64>();
-        unit_sum += units;
-
-        latency_sum += latency * units;
-        services.push(bought_services);
+fn solve(projects: &[Project], regions: &[Region]) -> Vec<ProjectState> {
+    let service_num = regions[0].units.len();
+    let region_num = regions.len();
+    let project_num = projects.len();
+    let mut project_states = vec![];
+    let mut cur_scores = vec![];
+    let mut total_score = 0.0;
+    for project in projects {
+        project_states.push(ProjectState {
+            cost_sum: 0.0,
+            unit_sum: 0,
+            latency_sum: 0,
+            bought_count: BTreeMap::new(),
+            bought_units: vec![0; service_num],
+            availability_sum: vec![0; service_num],
+            availability_square_sum: vec![0; service_num],
+        });
+        let initial_score = 1e9 / project.penalty as f64;
+        cur_scores.push(initial_score);
+        total_score += initial_score;
     }
 
-    let average_latency = latency_sum as f64 / unit_sum as f64;
-    let mut availability_indices = vec![];
-    for service_id in 0..service_num {
-        let mut sum = 0;
-        let mut square_sum = 0;
-        for s in services.iter() {
-            let unit = s[service_id];
-            sum += unit;
-            square_sum += unit * unit;
+    let mut remain_packages = vec![];
+    for region in regions {
+        remain_packages.push(region.available);
+    }
+
+    let mut rng = thread_rng();
+    let region_dist = Uniform::from(0..region_num);
+    let project_dist = Uniform::from(0..project_num);
+
+    let start = Instant::now();
+    let mut prev = Instant::now();
+    for turn in 1.. {
+        let mut candidate = None;
+        let mut increase_score = 0.0;
+
+        for _ in 0..TRIAL {
+            let region_id = rng.sample(region_dist);
+            if remain_packages[region_id] == 0 {
+                continue;
+            }
+
+            let region = &regions[region_id];
+            let project_id = rng.sample(project_dist);
+            let project = &projects[project_id];
+            let (next_state, next_score) =
+                project_states[project_id].update(region_id, region, project);
+            let cur_score = cur_scores[project_id];
+            let d_score = next_score - cur_score;
+            if increase_score < d_score {
+                increase_score = d_score;
+                candidate = Some((next_state, project_id, region_id));
+            }
         }
 
-        if square_sum == 0 {
-            availability_indices.push(0.0);
+        if let Some((next_state, project_id, region_id)) = candidate {
+            cur_scores[project_id] += increase_score;
+            total_score += increase_score;
+            project_states[project_id] = next_state;
+            assert!(remain_packages[region_id] > 0);
+            remain_packages[region_id] -= 1;
         } else {
-            availability_indices.push((sum * sum) as f64 / square_sum as f64);
+            break;
+        }
+
+        if prev.elapsed().as_millis() > 1000 {
+            eprintln!("turn={} total_score={}", turn, total_score);
+            prev = Instant::now();
+        }
+
+        if start.elapsed().as_millis() > TIME_LIMIT {
+            break;
         }
     }
 
-    let availability_index = availability_indices.iter().sum::<f64>() / service_num as f64;
+    eprintln!("total_score={}", total_score);
+    project_states
+}
 
-    let mut sla_penalties = vec![];
-    for service_id in 0..service_num {
-        let required = project.units[service_id];
-        if required == 0 {
-            sla_penalties.push(0.0);
-        } else {
-            let unit_sum = services.iter().map(|s| s[service_id]).sum::<i64>();
-            let penalty = (required - unit_sum.min(required)) as f64 / required as f64;
-            sla_penalties.push(penalty * project.penalty as f64);
+const TRIAL: usize = 100000;
+const TIME_LIMIT: u128 = 30_000;
+
+struct ProjectState {
+    cost_sum: f64,
+    unit_sum: i64,
+    latency_sum: i64,
+    bought_count: BTreeMap<usize, i64>,
+    bought_units: Vec<i64>,
+    availability_sum: Vec<i64>,
+    availability_square_sum: Vec<i64>,
+}
+
+impl ProjectState {
+    fn update(&self, region_id: usize, region: &Region, project: &Project) -> (ProjectState, f64) {
+        let service_num = region.units.len();
+        let add_unit_sum = region.units.iter().sum::<i64>();
+
+        let country = project.country;
+        let cost_sum = self.cost_sum + region.cost;
+        let unit_sum = self.unit_sum + add_unit_sum;
+        let latency_sum = self.latency_sum + add_unit_sum * region.latencies[country];
+        let average_latency = latency_sum as f64 / unit_sum as f64;
+        let mut bought_units = self.bought_units.clone();
+        for service_id in 0..service_num {
+            bought_units[service_id] += region.units[service_id];
         }
-    }
 
-    let sla_penalty = sla_penalties.iter().sum::<f64>() / sla_penalties.len() as f64;
-    let score = 1e9 / (cost_sum * average_latency / availability_index.max(1.0) + sla_penalty);
-    score
+        let mut sla_penalty_sum = 0.0;
+        for service_id in 0..service_num {
+            let required = project.units[service_id];
+            if required != 0 {
+                let lack = (required - bought_units[service_id]).max(0);
+                let penalty = lack as f64 / required as f64;
+                sla_penalty_sum += penalty * project.penalty as f64;
+            }
+        }
+        let sla_penalty = sla_penalty_sum / service_num as f64;
+
+        let mut availability_sum = self.availability_sum.clone();
+        let mut availability_square_sum = self.availability_square_sum.clone();
+        for service_id in 0..service_num {
+            let cur_count = bought_units[service_id];
+            let prev_count = cur_count - region.units[service_id];
+
+            availability_sum[service_id] -= prev_count;
+            availability_sum[service_id] += cur_count;
+
+            availability_square_sum[service_id] -= prev_count * prev_count;
+            availability_square_sum[service_id] += cur_count * cur_count;
+        }
+
+        let mut availability_index = 0.0;
+        for service_id in 0..service_num {
+            let sum = availability_sum[service_id];
+            let square_sum = availability_square_sum[service_id];
+            availability_index += (sum * sum) as f64 / square_sum as f64;
+        }
+
+        availability_index /= service_num as f64;
+
+        let mut bought_count = self.bought_count.clone();
+        *bought_count.entry(region_id).or_insert(0) += 1;
+        let score = 1e9 / (cost_sum * average_latency / availability_index.max(1.0) + sla_penalty);
+        let next_state = ProjectState {
+            cost_sum,
+            unit_sum,
+            latency_sum,
+            bought_count,
+            bought_units,
+            availability_sum,
+            availability_square_sum,
+        };
+
+        (next_state, score)
+    }
 }
 
 #[derive(Debug)]
