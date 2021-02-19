@@ -1,1 +1,1 @@
-/usr/bin/c++  -g   CMakeFiles/reply2018_practice.dir/main.cpp.o  -o reply2018_practice 
+/usr/bin/c++   -std=c++14 -s -O3 -g   CMakeFiles/reply2018_practice.dir/main.cpp.o  -o reply2018_practice 

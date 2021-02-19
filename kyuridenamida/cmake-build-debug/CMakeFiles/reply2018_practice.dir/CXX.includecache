@@ -1,0 +1,24 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/kyuridenamida/hashcode/reply2018-practice/kyuridenamida/main.cpp
+algorithm
+-
+iostream
+-
+vector
+-
+map
+-
+fstream
+-
+sstream
+-
+iomanip
+-
+
