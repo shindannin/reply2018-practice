@@ -11,12 +11,9 @@
 #include <cereal/cereal.hpp>
 #include <cereal/types/vector.hpp>
 
-#include "random.h"
-#include <sa/temp_manager.h>
 #include <sa/time_manager.h>
 
-using namespace tanzaku::sa::temp_manager;
-using namespace tanzaku::sa::time_manager;
+#include "random.h"
 
 using namespace std;
 
@@ -308,14 +305,14 @@ int main()
     return int64_t(solution.buy[p][r]) + delta >= 0 && b >= 0 && b <= regions[r].available_packages;
   };
 
-  {
-    std::ifstream is("out.cereal", std::ios::binary);
-    if (is.is_open()) {
-      cerr << "loading" << endl;
-      cereal::BinaryInputArchive archive(is);
-      archive(solution, scores);
-    }
-  }
+  // {
+  //   std::ifstream is("out.cereal", std::ios::binary);
+  //   if (is.is_open()) {
+  //     cerr << "loading" << endl;
+  //     cereal::BinaryInputArchive archive(is);
+  //     archive(solution, scores);
+  //   }
+  // }
 
   // double score = 0;
   // for (int i = 0; i < P; i++) {
@@ -459,7 +456,7 @@ int main()
   for (int pi = 0; pi < P; pi++) {
     const int p = unit_project_pair[pi].second;
     TemperatureManager temp_manager(10, 0);
-    ConstantIterationTimeManager time_manager(100000 * 2 / 10);
+    ConstantTimeManager time_manager(100000 * 2);
 
     for (int64_t iter = 0;; iter++) {
       auto t = time_manager.get_time();
@@ -487,7 +484,19 @@ int main()
         } else {
           add(p, r, -d);
         }
+
+        // if ((i + 1) % 10000000 == 0) {
+        //   cerr << "saving" << endl;
+        //   std::ofstream os("out.cereal", std::ios::binary);
+        //   cereal::BinaryOutputArchive archive(os);
+        //   archive(solution, scores);
+        // }
       }
+
+      // if (iter % 1000000 == 0) {
+      //   auto sum_score = std::accumulate(cur_scores.begin(), cur_scores.end(), int64_t(0));
+      //   cerr << iter << " " << t << " " << sum_score << endl;
+      // }
     }
 
     auto sum_score = std::accumulate(cur_scores.begin(), cur_scores.end(), int64_t(0));
@@ -501,42 +510,25 @@ int main()
     archive(solution, scores);
   }
 
-  // vector<int64_t> bought(R);
-  // for (int p = 0; p < P; p++) {
-  //   for (int r = 0; r < R; r++) {
-  //     if (r != 724) continue;
-  //     if (solution.buy[p][r] > 0) {
-  //       cerr << "add " << p << " " << r << " " << solution.buy[p][r] << endl;
-  //       bought[r] += solution.buy[p][r];
-  //     }
-  //   }
-  // }
-
-  // for (int r = 0; r < R; r++) {
-  //   if (r != 724) continue;
-  //   cerr << bought[r] << " " << solution.bought_packages[r] << " " << regions[r].available_packages << endl;
-  //   if (bought[r] != solution.bought_packages[r]) throw;
-  //   if (solution.bought_packages[r] > regions[r].available_packages) throw;
-  // }
-
   // cerr << score << endl;
 
-  // for (int i = 0; i < P; i++) {
-  //   bool first = true;
-  //   for (int j = 0; j < R; j++) {
-  //     // if (i != 0) continue;
-  //     // if (solution.buy[i][j] < 0) throw;
-  //     // used[j] += solution.buy[i][j];
-  //     // cerr << used[j] << " " << solution.bought_packages[j] << " " << regions[j].available_packages << endl;
-  //     // if (used[j] > regions[j].available_packages) throw;
-  //     if (solution.buy[i][j] > 0) {
-  //       if (!first) cout << " ";
-  //       first = false;
-  //       cout << regions[j].provider_index << " " << regions[j].region_index << " " << solution.buy[i][j];
-  //     }
-  //   }
-  //   cout << endl;
-  // }
+  // vector<int> used(R);
+  for (int i = 0; i < P; i++) {
+    bool first = true;
+    for (int j = 0; j < R; j++) {
+      // if (i != 0) continue;
+      // if (solution.buy[i][j] < 0) throw;
+      // used[j] += solution.buy[i][j];
+      // cerr << used[j] << " " << solution.bought_packages[j] << " " << regions[j].available_packages << endl;
+      // if (used[j] > regions[j].available_packages) throw;
+      if (solution.buy[i][j] > 0) {
+        if (!first) cout << " ";
+        first = false;
+        cout << regions[j].provider_index << " " << regions[j].region_index << " " << solution.buy[i][j];
+      }
+    }
+    cout << endl;
+  }
 
   // for (int i = 0; i < R; i++) {
   //   cerr << used[i] << " " << solution.bought_packages[i] << " " << regions[i].available_packages << endl;
