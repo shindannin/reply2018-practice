@@ -10,11 +10,17 @@ using namespace tanzaku::rng;
 
 Random rng;
 
-int main()
+int main(int argc, char *argv[])
 {
-  cin.tie(0);
-  ios::sync_with_stdio(false);
-  input(cin);
+  std::ifstream in(argv[1], std::ios::binary);
+  input(in);
+
+  std::ifstream ifs_state(argv[2], std::ios::binary);
+  if (ifs_state.is_open()) {
+    cerr << "loading" << endl;
+    cereal::BinaryInputArchive archive(ifs_state);
+    archive(solution, scores);
+  }
 
   double score = 0;
   for (int i = 0; i < P; i++) {
@@ -48,8 +54,10 @@ int main()
     }
   }
 
-  cerr << "saving" << endl;
-  std::ofstream os("out.cereal", std::ios::binary);
-  cereal::BinaryOutputArchive archive(os);
-  archive(solution, scores);
+  {
+    cerr << "saving" << endl;
+    std::ofstream os(argv[2], std::ios::binary);
+    cereal::BinaryOutputArchive archive(os);
+    archive(solution, scores);
+  }
 }
