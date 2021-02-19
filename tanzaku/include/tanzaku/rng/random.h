@@ -9,7 +9,12 @@
 #include <cstdint>
 #include <tuple>
 
-class XorShiftL
+namespace tanzaku
+{
+namespace rng
+{
+
+class Random
 {
   static const int LOG_CACHE_SIZE = 0x10000;
 
@@ -19,7 +24,7 @@ class XorShiftL
   std::uint64_t x = 88172645463325252LL;
 
 public:
-  XorShiftL()
+  Random()
   {
     for (int i = 0; i < LOG_CACHE_SIZE; i++) {
       logCache[i] = log((i + 0.5) / 0x10000);
@@ -136,5 +141,8 @@ public:
     }
   }
 };
+
+} // namespace rng
+} // namespace tanzaku
 
 #endif
